@@ -1,0 +1,4 @@
+mqtt_server_host = "192.0.2.0"
+mqtt_client_id = "probe_exporter"
+mqtt_username = "mqtt_username"
+mqtt_password = "mqtt_password"
