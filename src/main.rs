@@ -1,7 +1,9 @@
+use axum::{Router, routing::get};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
 use serde::Deserialize;
 use std::fs;
+use std::future::ready;
 use std::time::Duration;
 use toml::Table;
 
@@ -34,9 +36,30 @@ async fn main() {
         .unwrap();
 
     let builder = PrometheusBuilder::new();
-    builder
-        .install()
-        .expect("failed to install recorder/exporter");
+
+    let handle = builder
+        .install_recorder()
+        .expect("failed to install recorder");
+
+    let upkeep_handle = handle.clone();
+    tokio::spawn(async move {
+        let upkeep_timeout = Duration::from_secs(5);
+        loop {
+            tokio::time::sleep(upkeep_timeout).await;
+            upkeep_handle.run_upkeep();
+        }
+    });
+
+    // build our application with a single route
+    let app = Router::new().route("/metrics", get(move || ready(handle.render())));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:9000")
+        .await
+        .unwrap();
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
 
     let counter = metrics::counter!("mqtt_pub_counter", "sensor" => "sensor1");
     let centigrade_gauge = metrics::gauge!("centigrade", "sensor" => "sensor1");
